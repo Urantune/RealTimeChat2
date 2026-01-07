@@ -1,0 +1,17 @@
+### Login
+POST http://localhost:8080/login
+Content-Type: application/json
+
+{
+  "username": "urantune"
+}
+
+> {%
+    client.global.set("TOKEN", response.body.token);
+%}
+
+#### ListRoom (WebSocket)
+#WEBSOCKET ws://localhost:8080/listRoom
+##GET http://localhost:8080/listRoom
+##Authorization: {{TOKEN}}
+#wscat -c ws://localhost:8080/listRoom -H "Authorization: Bearer <TOKEN>"
