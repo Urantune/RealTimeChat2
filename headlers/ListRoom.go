@@ -1,7 +1,9 @@
 package headlers
 
 import (
+	"encoding/json"
 	"net/http"
+	"time"
 
 	"RealTimeChatApplication/services"
 
@@ -18,15 +20,51 @@ func ListRoom(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	defer conn.Close()
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}()
 
 	roomService := services.NewChatRoomService()
-	listRoom, err := roomService.GetAllChat()
-	if err != nil {
-		_ = conn.WriteJSON(gin.H{"error": err.Error()})
-		return
+
+	last := ""
+	sendRooms := func() error {
+		listRoom, err := roomService.GetAllChat()
+		if err != nil {
+			b, _ := json.Marshal(gin.H{"error": err.Error()})
+			return conn.WriteMessage(websocket.TextMessage, b)
+		}
+		b, _ := json.Marshal(gin.H{"type": "room_list", "listRoom": listRoom})
+
+		if string(b) == last {
+			return nil
+		}
+		last = string(b)
+		return conn.WriteMessage(websocket.TextMessage, b)
 	}
 
-	_ = conn.WriteJSON(gin.H{"listRoom": listRoom})
+	_ = sendRooms()
 
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-done:
+			_ = conn.Close()
+			return
+		case <-ticker.C:
+			if err := sendRooms(); err != nil {
+				_ = conn.Close()
+				return
+			}
+		}
+	}
 }
